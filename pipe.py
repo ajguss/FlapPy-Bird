@@ -6,7 +6,6 @@ pipe = random.choice(PIPES)
 
 
 class Pipe(arcade.Sprite):
-
     def __init__(self, image, scale=1):
         """
         Initializer for the pipe object, it's not really correct to call this Pipe since this class is responsible of
@@ -17,6 +16,8 @@ class Pipe(arcade.Sprite):
         self.horizontal_speed = -1.5
         # Just a boolean to check if the bird passed this pipe successfully.
         self.scored = False
+        self.gapTop = 1
+        self.gapBottom = 0
 
     @classmethod
     def random_pipe_obstacle(cls, sprites, height):
@@ -28,12 +29,14 @@ class Pipe(arcade.Sprite):
         """
         bottom_pipe = cls(pipe)
         bottom_pipe.top = random.randrange(sprites['base'].height + MIN_HEIGHT, height - GAP_SIZE - MIN_HEIGHT)
+        gapBottom = bottom_pipe.top
         bottom_pipe.left = sprites['background'].width
 
         top_pipe = cls(pipe)
         top_pipe.angle = 180
         top_pipe.left = sprites['background'].width
         top_pipe.bottom = bottom_pipe.top + GAP_SIZE
+        gapTop = top_pipe.bottom
         # top_pipe.bottom = random.randrange(bottom_pipe.top + MIN_GAP, height - MIN_HEIGHT)
 
         return bottom_pipe, top_pipe

@@ -27,14 +27,19 @@ class Bird(arcade.AnimatedTimeSprite):
 
     def update(self, dt=0):
         if self.dead:
-            self.angle = -90
-            if self.center_y > self.death_height + self.height//2:
-                self.center_y -= 4
+            self.angle = 30
+            self.vel = 0
+            self.dy = 0
+            self.dead = False
             return
 
         if self.vel > 0:
+            if self.vel - DY < 5:
+                self.center_y += DY/2
+            else:
+                self.center_y += DY
             # self.center_y += (1 - math.cos((JUMP_DY - self.vel) * math.pi)) * JUMP_STEP
-            self.center_y += DY
+            
             # self.center_y += self.vel
             # self.vel = 0
             self.vel -= DY
@@ -50,4 +55,3 @@ class Bird(arcade.AnimatedTimeSprite):
 
     def die(self):
         self.dead = True
-        arcade.play_sound(SOUNDS['die'])

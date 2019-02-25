@@ -36,15 +36,15 @@ MIN_HEIGHT = 50
 # Minimum gap between two pipes (The gap that a bird can go through)
 # MIN_GAP = 100
 
-GAP_SIZE = 120
+GAP_SIZE = 200
 
 # How many pixels per jump
-JUMP_DY = 60
+JUMP_DY = 45
 # How many pixels per frame
 JUMP_STEP = 4
 DY = 2
 # Gravity pixels
-GRAVITY = 2
+GRAVITY = 1.2
 
 ANGLEP = 15
 ANGLEM = -1.5

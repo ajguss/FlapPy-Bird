@@ -1,9 +1,11 @@
+import time
 import arcade
 import random
 from bird import Bird
 from pipe import Pipe
 from game_state import State
 from game_variables import *
+import numpy as np
 
 
 class Game(arcade.Window):
@@ -14,7 +16,7 @@ class Game(arcade.Window):
         Initializer for the game window, note that we need to call setup() on the game object.
         """
         super().__init__(width, height, title="Flappy Bird!")
-
+        self.lastJump = time.time()
         self.sprites = None
         self.pipe_sprites = None
         self.bird = None
@@ -36,9 +38,16 @@ class Game(arcade.Window):
         self.menus = {'start': arcade.load_texture(GET_READY_MESSAGE),
                       'gameover': arcade.load_texture(GAME_OVER),
                       'play': arcade.load_texture(PLAY_BUTTON)}
+        #RT stuff
+        self.action_space = ['s','n']
+        self.n_actions = len(self.action_space)
+        self.obs = [0, 0, 0]
+        self.reward = 0
+        self.done = False
 
     def setup(self):
         self.score = 0
+        self.reward = 0
         self.score_board = arcade.SpriteList()
         self.pipe_sprites = arcade.SpriteList()
         self.bird_list = arcade.SpriteList()
@@ -53,11 +62,27 @@ class Game(arcade.Window):
         # The AnimatedTimeSprite makes an animated sprite that animates over time.
         self.bird = Bird(50, self.height//2, self.base.height)
         self.bird_list.append(self.bird)
-
         # Create a random pipe (Obstacle) to start with.
         start_pipe1 = Pipe.random_pipe_obstacle(self.sprites, self.height)
         self.pipe_sprites.append(start_pipe1[0])
         self.pipe_sprites.append(start_pipe1[1])
+
+    def reset(self):
+        self.obs = np.array([self.minH, self.maxH, self.bird.center_y])
+        #self.obs = [self.pipe_sprites,self.bird]
+        self.score = 0
+        self.done = False
+        self.pipe_sprites = arcade.SpriteList()
+        # A dict holding sprites of static stuff like background & base
+        self.base = arcade.load_texture(BASE)
+        self.bird._set_center_y(250)
+        self.bird._set_angle(30)
+        self.reward = 0
+        # Create a random pipe (Obstacle) to start with.
+        start_pipe1 = Pipe.random_pipe_obstacle(self.sprites, self.height)
+        self.pipe_sprites.append(start_pipe1[0])
+        self.pipe_sprites.append(start_pipe1[1])
+        return self.obs
 
     def draw_score_board(self):
         """
@@ -78,6 +103,20 @@ class Game(arcade.Window):
         """
         arcade.draw_texture_rectangle(self.width//2, self.base.height//2, self.base.width, self.base.height, self.base, 0)
 
+    def draw_zone(self):
+        """
+        Bet you expected what this does. :)
+        """
+        top = self.pipe_sprites[0].top
+        bottom = self.pipe_sprites[1].bottom
+        if self.pipe_sprites[0].scored and len(self.action_space) > 3:
+            top = self.pipe_sprites[2].top
+            bottom = self.pipe_sprites[3].bottom
+        self.maxH = top
+        self.minH = bottom
+        arcade.draw_texture_rectangle(self.width // 2, self.maxH, self.width, 2, self.base, 0)
+        arcade.draw_texture_rectangle(self.width // 2, self.minH, self.width, 2, self.base, 0)
+
     def on_draw(self):
 
         """
@@ -89,7 +128,9 @@ class Game(arcade.Window):
 
         # Whatever the state, we need to draw background, then pipes on top, then base, then bird.
         self.draw_background()
-        self.pipe_sprites.draw()
+        self.draw_zone()
+        if self.pipe_sprites:
+            self.pipe_sprites.draw()
         self.draw_base()
         self.bird_list.draw()
 
@@ -103,14 +144,10 @@ class Game(arcade.Window):
             self.draw_score_board()
 
         elif self.state == State.GAME_OVER:
-            # Draw the game over menu if the player lost + draw the score board.
-            texture = self.menus['gameover']
-            arcade.draw_texture_rectangle(self.width//2, self.height//2 + 50, texture.width, texture.height, texture, 0)
-            texture = self.menus['play']
-            arcade.draw_texture_rectangle(self.width//2, self.height//2 - 100, texture.width, texture.height, texture, 0)
+            # I dont care about the menu. Just instant resetting.
             self.draw_score_board()
 
-    def on_key_release(self, symbol, modifiers):
+    def on_key_press(self, symbol, modifiers):
 
         if symbol == arcade.key.SPACE and self.state == State.MAIN_MENU:
             # If the game is starting, just change the state and return
@@ -119,6 +156,20 @@ class Game(arcade.Window):
         if symbol == arcade.key.SPACE:
             self.flapped = True
 
+    def ML_move(self, action):
+        if action == 1 and self.state == State.MAIN_MENU:
+            # If the game is starting, just change the state and return
+            self.state = State.PLAYING
+            self.reward += 1
+            return self.obs, self.reward, self.done
+        if action == 1:
+            self.flapped = True
+        
+        if self.bird.center_y > self.maxH and self.bird.center_y < self.minH:
+            self.reward+= 1
+        else:
+            self.reward += -1
+        return self.obs, self.reward, self.done
     def on_mouse_press(self, x, y, button, modifiers):
 
         if self.state == State.GAME_OVER:
@@ -152,22 +203,30 @@ class Game(arcade.Window):
         """
         This is the method called each frame to update objects (Like their position, angle, etc..) before drawing them.
         """
-        # print(delta_time)
         # Whatever the state, update the bird animation (as in advance the animation to the next frame)
         self.bird_list.update_animation()
 
         if self.state == State.PLAYING:
             self.build_score_board()
+            new_pipe = None
+            for pipe in self.pipe_sprites:
+                if pipe.right <= 0:
+                    pipe.kill()
+                elif len(self.pipe_sprites) == 2 and pipe.right <= random.randrange(self.width // 2, self.width // 2 + 15):
+                    new_pipe = Pipe.random_pipe_obstacle(self.sprites, self.height)
+            if new_pipe:
+                self.pipe_sprites.append(new_pipe[0])
+                self.pipe_sprites.append(new_pipe[1])
 
             # If the player pressed space, let the bird fly higher
             if self.flapped:
-                arcade.play_sound(SOUNDS['wing'])
                 self.bird.flap()
                 self.flapped = False
 
             # Check if bird is too high
             if self.bird.top > self.height:
                 self.bird.top = self.height
+                self.reward += -1
 
             # Check if bird is too low
             if self.bird.bottom <= self.base.height:
@@ -175,19 +234,12 @@ class Game(arcade.Window):
                     self.bird.change_y = 0
                 self.bird.bottom = self.base.height
 
-            new_pipe = None
+            
 
             # Kill pipes that are no longer shown on the screen as they're useless and live in ram and create a new pipe
             # when needed. (If the center_x of the closest pipe to the bird passed the middle of the screen)
-            for pipe in self.pipe_sprites:
-                if pipe.right <= 0:
-                    pipe.kill()
-                elif len(self.pipe_sprites) == 2 and pipe.right <= random.randrange(self.width // 2, self.width // 2 + 15):
-                    new_pipe = Pipe.random_pipe_obstacle(self.sprites, self.height)
 
-            if new_pipe:
-                self.pipe_sprites.append(new_pipe[0])
-                self.pipe_sprites.append(new_pipe[1])
+            
 
             # This calls "update()" Method on each object in the SpriteList
             self.pipe_sprites.update()
@@ -196,32 +248,29 @@ class Game(arcade.Window):
 
             # If the bird passed the center of the pipe safely, count it as a point.
             # Hard coding.. :)
-            if self.bird.center_x >= self.pipe_sprites[0].center_x and not self.pipe_sprites[0].scored:
-                arcade.play_sound(SOUNDS['point'])
+            if self.pipe_sprites and self.pipe_sprites[0] and self.bird.center_x >= self.pipe_sprites[0].center_x and not self.pipe_sprites[0].scored:
                 self.score += 1
+                self.reward+=(50 * self.score)
                 # Well, since each "obstacle" is a two pipe system, we gotta count them both as scored.
                 self.pipe_sprites[0].scored = True
                 self.pipe_sprites[1].scored = True
-                print(self.score)
+                self.maxH = self.pipe_sprites[2].top
+                self.minH = self.pipe_sprites[3].bottom
+                self.draw_zone()
 
             # Check if the bird collided with any of the pipes
             hit = arcade.check_for_collision_with_list(self.bird, self.pipe_sprites)
 
             if any(hit):
-                arcade.play_sound(SOUNDS['hit'])
-                self.state = State.GAME_OVER
-                self.bird.die()
-
+                self.reward += -100
+                self.done = True
+                time.sleep(1)
+                self.state = State.PLAYING
+                self.reset()
+            
+            #self.obs = [self.minH, self.maxH, self.bird.center_y]
+            self.obs = np.array([self.minH, self.maxH, self.bird.center_y, self.bird.center_x, self.pipe_sprites[0].center_x])
         elif self.state == State.GAME_OVER:
             # We need to keep updating the bird in the game over scene so it can still "die"
             self.bird.update()
 
-
-def main():
-    game = Game(288, 512)
-    game.setup()
-    arcade.run()
-
-
-if __name__ == "__main__":
-    main()
